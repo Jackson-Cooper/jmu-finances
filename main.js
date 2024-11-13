@@ -22,13 +22,143 @@ const sankey = d3Sankey.sankey()
   .extent([[1, 5], [width - 1, height - 5]]);
 
 async function init() {
-  const data = await d3.json("data/data_sankey.json");
+  const data = await d3.json("data/jmu.json");
   // Applies it to the data. We make a copy of the nodes and links objects
   // so as to avoid mutating the original.
+
+  // -------new code -----------
+
+  const sankeyNodes = [];
+  const sankeyLinks = [];
+  
+  // Create a mapping to track unique nodes and their indices
+  const nodeMap = new Map();
+  let nodeIndex = 0;
+
+  // Process Revenue Items (leftmost nodes)
+  data['jmu-athletics'].forEach(item => {
+    const revenueName = item.name;
+    if (!nodeMap.has(revenueName)) {
+      nodeMap.set(revenueName, nodeIndex++);
+      sankeyNodes.push({
+        name: nodeMap.get(revenueName),
+        title: revenueName,
+        category: 0 // Revenue items category
+      });
+    }
+  });
+
+  // Process Revenue Categories (second-to-leftmost nodes)
+  const revenueCategories = [...new Set(data['jmu-revenues'].map(r => r.type))];
+  revenueCategories.forEach(category => {
+    if (!nodeMap.has(category)) {
+      nodeMap.set(category, nodeIndex++);
+      sankeyNodes.push({
+        name: nodeMap.get(category),
+        title: category,
+        category: 1 // Revenue categories
+      });
+    }
+  });
+
+  // Center node: JMU
+  const jmuNodeIndex = nodeIndex++;
+  sankeyNodes.push({
+    name: jmuNodeIndex,
+    title: "JMU",
+    category: 2 // Center node
+  });
+
+  // Process Expense Categories (second-to-rightmost nodes)
+  const expenseCategories = [...new Set(data['jmu-revenues']
+    .filter(r => r.type === 'Operating Expense')
+    .map(r => 'Operating Expenses'))];
+  expenseCategories.forEach(category => {
+    if (!nodeMap.has(category)) {
+      nodeMap.set(category, nodeIndex++);
+      sankeyNodes.push({
+        name: nodeMap.get(category),
+        title: category,
+        category: 3 // Expense categories
+      });
+    }
+  });
+
+  // Process Expense Items (rightmost nodes)
+  const expenseItems = data['jmu-revenues']
+    .filter(r => r.type === 'Operating Expense');
+  expenseItems.forEach(expense => {
+    if (!nodeMap.has(expense.name)) {
+      nodeMap.set(expense.name, nodeIndex++);
+      sankeyNodes.push({
+        name: nodeMap.get(expense.name),
+        title: expense.name,
+        category: 4 // Expense items
+      });
+    }
+  });
+
+  // Create links
+  // 1. Revenue Items to Revenue Categories
+  data['jmu-athletics'].forEach(item => {
+    const revenueItemIndex = nodeMap.get(item.name);
+    const revenueCategoryIndex = nodeMap.get('Operating revenues'); // Adjust as needed
+    
+    sankeyLinks.push({
+      source: revenueItemIndex,
+      target: revenueCategoryIndex,
+      value: Object.values(item)
+        .filter(val => typeof val === 'number')
+        .reduce((sum, val) => sum + val, 0)
+    });
+  });
+
+  // 2. Revenue Categories to JMU
+  revenueCategories.forEach(category => {
+    const categoryIndex = nodeMap.get(category);
+    sankeyLinks.push({
+      source: categoryIndex,
+      target: jmuNodeIndex,
+      value: data['jmu-revenues']
+        .filter(r => r.type === category)
+        .reduce((sum, r) => sum + r['2023'], 0)
+    });
+  });
+
+  // 3. JMU to Expense Categories
+  expenseCategories.forEach(category => {
+    sankeyLinks.push({
+      source: jmuNodeIndex,
+      target: nodeMap.get(category),
+      value: data['jmu-revenues']
+        .filter(r => r.type === 'Operating Expense')
+        .reduce((sum, r) => sum + r['2023'], 0)
+    });
+  });
+
+  // 4. Expense Categories to Expense Items
+  expenseItems.forEach(expense => {
+    const expenseCategoryIndex = nodeMap.get('Operating Expenses');
+    sankeyLinks.push({
+      source: expenseCategoryIndex,
+      target: nodeMap.get(expense.name),
+      value: expense['2023']
+    });
+  });
+
+  // Prepare data for Sankey
+  const sankeyData = {
+    nodes: sankeyNodes,
+    links: sankeyLinks
+  };
+
+
+  // ----- original code -------
+
   const { nodes, links } = sankey({
   // const tmp = sankey({
-    nodes: data.nodes.map(d => Object.assign({}, d)),
-    links: data.links.map(d => Object.assign({}, d))
+    nodes: sankeyData.nodes.map(d => Object.assign({}, d)),
+    links: sankeyData.links.map(d => Object.assign({}, d))
   });
 
   // console.log('tmp', tmp);
